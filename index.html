@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deploy project với Vercel — Hướng dẫn nội bộ</title>
+
+<!-- Fonts: Archivo (display, 900/800) + Nunito (body) — Swiss Modern system -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800;900&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+<style>
+/* ===========================================
+   CSS CUSTOM PROPERTIES — Swiss Modern theme
+   Change these to re-theme the whole deck
+   =========================================== */
+:root{
+    --bg:#ffffff;
+    --ink:#0a0a0a;
+    --red:#ff3300;
+    --muted:#5c5c5c;
+    --faint:#8a8a8a;
+    --grid-line: rgba(10,10,10,0.07);
+    --font-display:'Archivo', sans-serif;
+    --font-body:'Nunito', sans-serif;
+    --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+*{ margin:0; padding:0; box-sizing:border-box; }
+
+/* ===========================================
+   FIXED 16:9 STAGE — MANDATORY BASE STYLES
+   (full contents of viewport-base.css)
+   =========================================== */
+html, body{
+    width:100%; height:100%; margin:0; overflow:hidden;
+    background: var(--stage-bg, #000);
+}
+.deck-viewport{
+    position:fixed; inset:0; overflow:hidden;
+    background: var(--stage-bg, #000);
+}
+.deck-stage{
+    position:absolute; left:0; top:0; width:1920px; height:1080px;
+    overflow:hidden; transform-origin:0 0;
+    background: var(--slide-bg, #fff);
+}
+.slide{
+    position:absolute; inset:0; width:1920px; height:1080px; overflow:hidden;
+    display:block; visibility:hidden; opacity:0; pointer-events:none;
+    background: var(--slide-bg, #fff);
+}
+.slide.active, .slide.visible{
+    visibility:visible; opacity:1; pointer-events:auto; z-index:1;
+}
+img, video, canvas, svg{ max-width:100%; max-height:100%; }
+.deck-controls{
+    position:fixed; left:50%; bottom:22px; transform:translateX(-50%); z-index:1000;
+}
+@media print{
+    html, body{ width:1920px; height:auto; overflow:visible; background:#fff; }
+    .deck-viewport{ position:static; overflow:visible; background:#fff; }
+    .deck-stage{ position:static; width:auto; height:auto; transform:none !important; background:none; }
+    .slide{
+        position:relative; display:block !important; visibility:visible !important;
+        opacity:1 !important; pointer-events:auto !important;
+        width:1920px; height:1080px; break-after:page; page-break-after:always;
+    }
+    .slide:last-child{ break-after:auto; page-break-after:auto; }
+    .deck-controls{ display:none !important; }
+}
+@media (prefers-reduced-motion: reduce){
+    *, *::before, *::after{
+        animation-duration:0.01ms !important;
+        transition-duration:0.2s !important;
+    }
+}
+
+/* ===========================================
+   SLIDE BASE — typography + grid system
+   =========================================== */
+.slide{ font-family:var(--font-body); background:var(--bg); }
+
+.grid-overlay{
+    position:absolute; inset:0; z-index:0;
+    background-image:
+        repeating-linear-gradient(90deg, var(--grid-line) 0 1px, transparent 1px 160px),
+        repeating-linear-gradient(0deg, var(--grid-line) 0 1px, transparent 1px 160px);
+}
+
+/* top chrome: running number + section tag */
+.chrome-num{
+    position:absolute; top:72px; left:72px; z-index:3;
+    font-family:var(--font-display); font-weight:900; font-size:22px;
+    letter-spacing:0.12em; color:var(--ink);
+}
+.chrome-num span{ color:var(--red); }
+.chrome-tag{
+    position:absolute; top:72px; right:72px; z-index:3;
+    font-family:var(--font-display); font-weight:800; font-size:17px;
+    letter-spacing:0.16em; text-transform:uppercase; color:var(--ink);
+    text-align:right;
+}
+
+/* bottom chrome: baseline */
+.chrome-baseline{
+    position:absolute; left:0; bottom:72px; width:100%; z-index:3;
+    display:flex; justify-content:space-between; align-items:center;
+    padding:0 72px; font-family:var(--font-display); font-weight:700;
+    font-size:15px; letter-spacing:0.14em; text-transform:uppercase; color:var(--faint);
+}
+.chrome-baseline .dash{ color:var(--red); }
+
+/* eyebrow / heading / body system reused across content slides */
+.eyebrow{
+    font-family:var(--font-display); font-weight:700; font-size:21px;
+    letter-spacing:0.22em; text-transform:uppercase; color:var(--red);
+    margin-bottom:24px;
+}
+h1.title{
+    font-family:var(--font-display); font-weight:900; font-size:104px;
+    line-height:1.02; letter-spacing:-0.01em; color:var(--ink); margin-bottom:26px;
+}
+h1.title em{ font-style:normal; color:var(--red); }
+h2.heading{
+    font-family:var(--font-display); font-weight:900; font-size:72px;
+    line-height:1.05; letter-spacing:-0.01em; color:var(--ink); margin-bottom:38px;
+}
+h2.heading.small{ font-size:56px; margin-bottom:30px; }
+p.sub{
+    font-family:var(--font-body); font-weight:600; font-size:28px;
+    color:var(--muted); max-width:900px; line-height:1.45;
+}
+
+/* geometric accents — abstract shapes only, no illustrations */
+.geo-circle{
+    position:absolute; width:380px; height:380px; border:3px solid var(--ink); border-radius:50%;
+}
+.geo-circle::after{ content:''; position:absolute; inset:54px; border:3px solid var(--red); border-radius:50%; }
+.geo-tri{
+    position:absolute; width:0; height:0;
+    border-left:26px solid transparent; border-right:26px solid transparent;
+    border-bottom:46px solid var(--red);
+}
+.geo-square{
+    position:absolute; width:46px; height:46px; border:3px solid var(--ink);
+}
+
+/* ===========================================
+   BULLET LIST component
+   =========================================== */
+.bullet-list{ list-style:none; margin-top:4px; }
+.bullet-list li{
+    display:flex; align-items:flex-start; gap:24px;
+    padding:20px 0; border-top:1px solid rgba(10,10,10,0.1);
+    font-family:var(--font-body); font-weight:700; font-size:28px; color:var(--ink);
+    max-width:1180px;
+}
+.bullet-list li:first-child{ border-top:none; }
+.bullet-list li .mark{
+    flex:0 0 auto; width:14px; height:14px; background:var(--red); margin-top:9px;
+}
+.bullet-list li .txt b{ color:var(--red); }
+.bullet-list li .txt .note{
+    display:block; font-weight:600; font-size:19px; color:var(--muted); margin-top:6px;
+}
+
+/* compact bullet list variant — used alongside app mockups */
+.bullet-list.compact li{
+    font-size:25px; padding:18px 0; max-width:680px; gap:18px;
+}
+.bullet-list.compact li .mark{ width:12px; height:12px; margin-top:8px; }
+.bullet-list.compact li .txt .note{ font-size:17px; }
+
+/* ===========================================
+   STEP (numbered) component — for process slides
+   =========================================== */
+.step-row{ display:flex; gap:48px; margin-top:16px; }
+.step{
+    flex:1; border-top:4px solid var(--ink); padding-top:28px; max-width:360px;
+}
+.step .step-num{
+    font-family:var(--font-display); font-weight:900; font-size:56px; color:var(--red); margin-bottom:18px;
+}
+.step .step-title{
+    font-family:var(--font-display); font-weight:800; font-size:26px; color:var(--ink); margin-bottom:10px;
+}
+.step .step-desc{
+    font-family:var(--font-body); font-weight:600; font-size:19px; color:var(--muted); line-height:1.5;
+}
+
+/* ===========================================
+   TWO-COLUMN CARD component
+   =========================================== */
+.col-wrap{ display:flex; gap:56px; margin-top:12px; }
+.col-card{
+    flex:1; max-width:640px; border:2px solid var(--ink); padding:40px 40px 44px;
+    position:relative;
+}
+.col-card .col-tag{
+    position:absolute; top:-22px; left:36px; background:var(--bg); padding:0 14px;
+    font-family:var(--font-display); font-weight:800; font-size:16px;
+    letter-spacing:0.14em; text-transform:uppercase; color:var(--red);
+}
+.col-card h3{
+    font-family:var(--font-display); font-weight:900; font-size:34px; color:var(--ink); margin-bottom:24px;
+}
+.col-card ul{ list-style:none; }
+.col-card li{
+    font-family:var(--font-body); font-weight:700; font-size:22px; color:var(--ink);
+    padding:16px 0; border-top:1px solid rgba(10,10,10,0.1);
+}
+.col-card li:first-child{ border-top:none; }
+.col-card li .note{ display:block; font-weight:500; font-size:17px; color:var(--muted); margin-top:4px; }
+
+/* ===========================================
+   APP MOCKUP component — illustrative recreation
+   of the GitHub / Vercel web UI for each step.
+   Not literal screenshots: rebuilt with CSS so the
+   deck never depends on external screenshot assets.
+   =========================================== */
+.app-mock{
+    position:absolute; left:860px; top:198px; width:988px;
+    background:#fff; border:1px solid #e4e4e4; border-radius:14px;
+    overflow:hidden; box-shadow:0 36px 90px rgba(10,10,10,0.16); z-index:2;
+}
+.mock-bar{
+    height:48px; display:flex; align-items:center; gap:10px;
+    padding:0 20px; background:#f6f6f7; border-bottom:1px solid #e9e9e9;
+}
+.mock-dot{ width:11px; height:11px; border-radius:50%; background:#dcdcdc; }
+.mock-url{
+    margin-left:10px; flex:1; background:#fff; border:1px solid #e6e6e6; border-radius:7px;
+    padding:7px 16px; font-family:'Nunito',sans-serif; font-weight:700; font-size:15px; color:#6b6b6b;
+    display:flex; align-items:center; gap:8px;
+}
+.mock-url .lock{ font-size:12px; color:#9a9a9a; }
+.mock-body{ padding:38px 44px 42px; font-family:'Nunito',sans-serif; }
+.mock-caption{
+    position:absolute; left:860px; top:1px; width:988px; text-align:right;
+}
+
+/* GitHub mock vocabulary */
+.gh-logo{ width:24px; height:24px; border-radius:6px; background:#1b1f23; color:#fff;
+    display:flex; align-items:center; justify-content:center; font-family:'Archivo',sans-serif; font-weight:900; font-size:12px; flex:0 0 auto; }
+.gh-h1{ font-family:'Archivo',sans-serif; font-weight:800; font-size:28px; color:#1b1f23; margin-bottom:8px; }
+.gh-crumb{ font-family:'Archivo',sans-serif; font-weight:700; font-size:18px; color:#1b1f23; margin-bottom:22px; display:flex; align-items:center; gap:10px; }
+.gh-p{ font-size:15px; color:#656d76; margin-bottom:24px; line-height:1.5; }
+.gh-label{ display:block; font-size:14px; font-weight:700; color:#1b1f23; margin-bottom:8px; }
+.gh-input-row{ display:flex; align-items:center; gap:10px; margin-bottom:22px; }
+.gh-select{ border:1px solid #d0d7de; border-radius:6px; padding:11px 14px; font-size:15px; color:#1b1f23; background:#f6f8fa; font-weight:600; }
+.gh-slash{ font-size:20px; color:#656d76; }
+.gh-input{ flex:1; border:1px solid #d0d7de; border-radius:6px; padding:11px 14px; font-size:15px; color:#1b1f23; }
+.gh-radio-row{ display:flex; gap:28px; margin-bottom:24px; font-size:15px; color:#1b1f23; }
+.gh-radio{ display:flex; align-items:center; gap:9px; }
+.gh-radio .dot-outer{ width:17px; height:17px; border-radius:50%; border:2px solid #d0d7de; display:flex; align-items:center; justify-content:center; flex:0 0 auto; }
+.gh-radio.checked .dot-outer{ border-color:#1f6feb; }
+.gh-radio.checked .dot-outer::after{ content:''; width:9px; height:9px; border-radius:50%; background:#1f6feb; }
+.gh-foot{ display:flex; justify-content:flex-end; border-top:1px solid #eaeef2; padding-top:22px; margin-top:4px; }
+.gh-btn{ background:#2da44e; color:#fff; border:none; border-radius:6px; padding:11px 22px; font-size:15px; font-weight:700; font-family:'Nunito',sans-serif; }
+.gh-dropzone{ border:2px dashed #d0d7de; border-radius:10px; padding:46px 30px; text-align:center; color:#656d76; font-size:17px; background:#f6f8fa; margin-bottom:24px; line-height:1.6; }
+.gh-dropzone b{ color:#1f6feb; }
+.gh-dropzone .up-icon{ font-size:30px; display:block; margin-bottom:12px; }
+.gh-commit-box{ border:1px solid #d0d7de; border-radius:8px; padding:16px 18px; font-size:15px; color:#1b1f23; margin-bottom:18px; background:#fff; }
+.gh-commit-box .ph{ color:#8c959f; }
+
+/* Vercel mock vocabulary */
+.vc-logo{ width:0; height:0; border-left:9px solid transparent; border-right:9px solid transparent; border-bottom:16px solid #000; flex:0 0 auto; }
+.vc-h1{ font-family:'Archivo',sans-serif; font-weight:800; font-size:28px; color:#000; margin-bottom:22px; }
+.vc-search{ border:1px solid #eaeaea; border-radius:8px; padding:12px 16px; font-size:15px; color:#8a8a8a; margin-bottom:18px; }
+.vc-repo-row{ display:flex; align-items:center; justify-content:space-between; border:1px solid #eaeaea; border-radius:9px; padding:16px 20px; margin-bottom:12px; }
+.vc-repo-row.dim{ opacity:.4; }
+.vc-repo-name{ display:flex; align-items:center; gap:12px; font-size:16px; font-weight:700; color:#000; }
+.vc-repo-icon{ width:26px; height:26px; border-radius:6px; background:#1b1f23; flex:0 0 auto; }
+.vc-btn{ background:#000; color:#fff; border:none; border-radius:7px; padding:10px 20px; font-size:14px; font-weight:700; font-family:'Nunito',sans-serif; }
+.vc-btn.outline{ background:#fff; color:#000; border:1.5px solid #000; }
+.vc-btn.wide{ width:100%; padding:16px; font-size:16px; text-align:center; margin-top:8px; }
+.vc-field{ margin-bottom:18px; }
+.vc-field label{ display:block; font-size:12px; font-weight:800; color:#8a8a8a; text-transform:uppercase; letter-spacing:.05em; margin-bottom:8px; }
+.vc-select, .vc-input{ border:1px solid #eaeaea; border-radius:8px; padding:12px 16px; font-size:15px; color:#000; width:100%; font-weight:600; background:#fafafa; }
+.vc-accordion{ border:1px solid #eaeaea; border-radius:9px; padding:16px 20px; margin-bottom:14px; font-size:15px; color:#000; font-weight:700; display:flex; justify-content:space-between; align-items:center; }
+.vc-accordion .chev{ color:#aaa; }
+.vc-env-row{ display:flex; gap:12px; margin-bottom:14px; }
+.vc-env-row .vc-input{ padding:10px 14px; font-size:14px; }
+.vc-domain-row{ display:flex; align-items:center; justify-content:space-between; border:1px solid #eaeaea; border-radius:9px; padding:16px 20px; margin-top:18px; }
+.vc-pill{ display:inline-flex; align-items:center; gap:7px; background:#eafbea; color:#1a7f37; font-size:13px; font-weight:700; padding:5px 12px; border-radius:100px; }
+.vc-pill .dot{ width:6px; height:6px; border-radius:50%; background:#1a7f37; }
+.vc-success{ text-align:center; padding:6px 0 0; }
+.vc-success .emoji{ font-size:44px; margin-bottom:14px; }
+.vc-success h2{ font-family:'Archivo',sans-serif; font-weight:800; font-size:26px; color:#000; margin-bottom:10px; }
+.vc-success p{ font-size:15px; color:#666; margin-bottom:22px; }
+.vc-url-pill{ display:inline-flex; align-items:center; gap:9px; border:1px solid #eaeaea; border-radius:100px; padding:10px 22px; font-size:15px; color:#000; font-weight:700; margin-bottom:24px; }
+.vc-success-actions{ display:flex; gap:14px; justify-content:center; margin-bottom:28px; }
+.vc-deploy-table{ text-align:left; border-top:1px solid #eee; padding-top:18px; }
+.vc-deploy-table .row{ display:flex; align-items:center; justify-content:space-between; padding:10px 0; font-size:14px; color:#000; font-weight:600; }
+.vc-deploy-drop{ border:2px dashed #d4d4d4; border-radius:14px; padding:62px 30px; text-align:center; color:#8a8a8a; }
+.vc-deploy-drop .up-icon{ font-size:36px; display:block; margin-bottom:16px; }
+.vc-deploy-drop b{ color:#000; }
+.vc-deploy-drop .or{ margin:16px 0; font-size:13px; color:#bbb; text-transform:uppercase; letter-spacing:.1em; }
+.vc-note{ text-align:center; font-size:14px; color:#8a8a8a; margin-top:18px; }
+
+/* ===========================================
+   REVEAL ANIMATIONS — staggered rise-in
+   =========================================== */
+.reveal{ opacity:0; transform:translateY(26px); }
+.slide.visible .reveal{
+    animation: rise 0.7s var(--ease-out-expo) forwards;
+}
+.slide.visible .reveal.d1{ animation-delay:.05s; }
+.slide.visible .reveal.d2{ animation-delay:.16s; }
+.slide.visible .reveal.d3{ animation-delay:.28s; }
+.slide.visible .reveal.d4{ animation-delay:.4s; }
+.slide.visible .reveal.d5{ animation-delay:.52s; }
+.slide.visible .reveal.d6{ animation-delay:.64s; }
+@keyframes rise{ to{ opacity:1; transform:translateY(0); } }
+
+/* ===========================================
+   DECK CONTROLS — outside the slide stage
+   =========================================== */
+.deck-controls{
+    display:flex; align-items:center; gap:18px;
+    background:rgba(10,10,10,0.85); border-radius:100px; padding:12px 22px;
+    backdrop-filter:blur(8px);
+}
+.deck-controls button{
+    width:36px; height:36px; border-radius:50%; border:none; background:rgba(255,255,255,0.1);
+    color:#fff; font-size:16px; cursor:pointer; display:flex; align-items:center; justify-content:center;
+    transition:background .2s;
+}
+.deck-controls button:hover{ background:var(--red); }
+.deck-dots{ display:flex; gap:8px; flex-wrap:wrap; max-width:360px; }
+.deck-dots .dot{
+    width:7px; height:7px; border-radius:50%; background:rgba(255,255,255,0.3); cursor:pointer; transition:background .2s, transform .2s;
+}
+.deck-dots .dot.active{ background:var(--red); transform:scale(1.3); }
+.deck-progress-label{ color:rgba(255,255,255,0.6); font-family:var(--font-body); font-size:13px; font-weight:700; min-width:52px; text-align:center; }
+
+/* ===========================================
+   EDIT MODE AFFORDANCE (hover top-left / 'E' key)
+   =========================================== */
+.edit-hotzone{ position:fixed; top:0; left:0; width:80px; height:80px; z-index:10000; cursor:pointer; }
+.edit-toggle{
+    position:fixed; top:18px; left:18px; z-index:10001;
+    width:40px; height:40px; border-radius:50%; border:none; background:#0a0a0a; color:#fff;
+    font-size:16px; cursor:pointer; opacity:0; pointer-events:none; transition:opacity .3s ease;
+    display:flex; align-items:center; justify-content:center;
+}
+.edit-toggle.show, .edit-toggle.active{ opacity:1; pointer-events:auto; }
+[contenteditable="true"]{ outline:2px dashed var(--red); outline-offset:4px; cursor:text; }
+</style>
+</head>
+<body>
+<div class="deck-viewport">
+  <main class="deck-stage" id="deckStage">
+
+    <!-- ============ SLIDE 1 — TITLE ============ -->
+    <section class="slide active">
+      <div class="grid-overlay"></div>
+      <div class="chrome-num reveal d1">01 <span>/</span> 10</div>
+      <div class="chrome-tag reveal d1">Internal Engineering Brief</div>
+      <div class="geo-circle reveal d2" style="right:140px; top:260px;"></div>
+      <div class="geo-tri reveal d2" style="right:300px; top:150px; transform:rotate(18deg);"></div>
+      <div style="position:absolute; left:72px; bottom:120px; width:1100px; z-index:2;">
+        <div class="eyebrow reveal d3">Hướng dẫn nội bộ</div>
+        <h1 class="title reveal d4" contenteditable="false">Deploy project<br>với <em>Vercel</em></h1>
+        <p class="sub reveal d5" contenteditable="false">Từ một folder code trên máy đến một URL production — chỉ qua giao diện web, không cần dòng lệnh nào.</p>
+      </div>
+      <div class="chrome-baseline">
+        <span>Frontend Team <span class="dash">—</span> 2026</span>
+        <span>vercel.com <span class="dash">×</span> github.com</span>
+      </div>
+    </section>
+
+    <!-- ============ SLIDE 2 — VERCEL LÀ GÌ ============ -->
+    <section class="slide">
+      <div class="grid-overlay"></div>
+      <div class="chrome-num reveal d1">02 <span>/</span> 10</div>
+      <div class="chrome-tag reveal d1">Giới thiệu</div>
+      <div class="geo-square reveal d2" style="right:120px; top:230px;"></div>
+      <div class="geo-circle reveal d2" style="right:220px; top:300px; width:220px; height:220px;"></div>
+
+      <div style="position:absolute; left:72px; top:230px; width:1300px; z-index:2;">
+        <div class="eyebrow reveal d2">Khái niệm cơ bản</div>
+        <h2 class="heading reveal d3" contenteditable="false">Vercel là gì?</h2>
+        <ul class="bullet-list">
+          <li class="reveal d4"><span class="mark"></span><span class="txt" contenteditable="false">Nền tảng <b>deploy &amp; hosting</b> cho ứng dụng frontend — Next.js, React, Vue, hoặc static site</span></li>
+          <li class="reveal d4"><span class="mark"></span><span class="txt" contenteditable="false">Tự động <b>build &amp; deploy</b> mỗi khi có commit hoặc pull request mới trên Git</span></li>
+          <li class="reveal d5"><span class="mark"></span><span class="txt" contenteditable="false"><b>CDN toàn cầu</b> — tải nhanh ở mọi khu vực, không cần tự cấu hình</span></li>
+          <li class="reveal d6"><span class="mark"></span><span class="txt" contenteditable="false"><b>Free tier (Hobby)</b> đủ dùng cho project demo, nội bộ và cá nhân</span></li>
+        </ul>
+      </div>
+      <div class="chrome-baseline">
+        <span>Frontend Team <span class="dash">—</span> 2026</span>
+        <span>02 / 10</span>
+      </div>
+    </section>
+
+    <!-- ============ SLIDE 3 — CHUẨN BỊ PROJECT ============ -->
+    <section class="slide">
+      <div class="grid-overlay"></div>
+      <div class="chrome-num reveal d1">03 <span>/</span> 10</div>
+      <div class="chrome-tag reveal d1">Bước 0 · Chuẩn bị</div>
+      <div class="geo-tri reveal d2" style="right:200px; top:260px; transform:rotate(-12deg);"></div>
+      <div class="geo-circle reveal d2" style="right:100px; top:330px; width:200px; height:200px;"></div>
+
+      <div style="position:absolute; left:72px; top:230px; width:1300px; z-index:2;">
+        <div class="eyebrow reveal d2">Trước khi bắt đầu</div>
+        <h2 class="heading reveal d3" contenteditable="false">Chuẩn bị project</h2>
+        <ul class="bullet-list">
+          <li class="reveal d4"><span class="mark"></span><span class="txt" contenteditable="false">Có tài khoản <b>GitHub</b> và <b>Vercel</b> — đăng ký miễn phí, dùng được ngay</span></li>
+          <li class="reveal d4"><span class="mark"></span><span class="txt" contenteditable="false">Project chạy &amp; hiển thị đúng trên máy — không còn lỗi</span></li>
+          <li class="reveal d5"><span class="mark"></span><span class="txt" contenteditable="false">Biết project thuộc loại gì: <b>Next.js, React, Vue</b> hay site tĩnh (HTML/CSS/JS)</span></li>
+          <li class="reveal d6"><span class="mark"></span><span class="txt" contenteditable="false">Không để lộ file nhạy cảm như <b>.env</b> (chứa mật khẩu, API key)</span></li>
+        </ul>
+      </div>
+      <div class="chrome-baseline">
+        <span>Frontend Team <span class="dash">—</span> 2026</span>
+        <span>03 / 10</span>
+      </div>
+    </section>
+
+    <!-- ============ SLIDE 4 — TẠO REPOSITORY TRÊN GITHUB ============ -->
+    <section class="slide">
+      <div class="grid-overlay"></div>
+      <div class="chrome-num reveal d1">04 <span>/</span> 10</div>
+      <div class="chrome-tag reveal d1">Bước 1 · GitHub</div>
+
+      <div style="position:absolute; left:72px; top:260px; width:740px; z-index:2;">
+        <div class="eyebrow reveal d2">Chuẩn bị nơi lưu code</div>
+        <h2 class="heading small reveal d3" contenteditable="false">Tạo repository trên GitHub</h2>
+        <ul class="bullet-list compact">
+          <li class="reveal d4"><span class="mark"></span><span class="txt" contenteditable="false">Đăng nhập <b>github.com</b> → bấm dấu "+" trên thanh menu → <b>New repository</b></span></li>
+          <li class="reveal d5"><span class="mark"></span><span class="txt" contenteditable="false">Đặt tên repo, ví dụ <b>vercel-deploy-slides</b>, chọn Public hoặc Private</span></li>
+          <li class="reveal d6"><span class="mark"></span><span class="txt" contenteditable="false">Bấm <b>"Create repository"</b> — vậy là có một nơi trống để chứa code</span></li>
+        </ul>
+      </div>
+
+      <div class="app-mock reveal d4" style="top:218px;">
+        <div class="mock-bar">
+          <span class="mock-dot"></span><span class="mock-dot"></span><span class="mock-dot"></span>
+          <div class="mock-url"><span class="lock">🔒</span>github.com/new</div>
+        </div>
+        <div class="mock-body">
+          <div class="gh-crumb"><span class="gh-logo">GH</span>Create a new repository</div>
+          <div class="gh-p">A repository contains all project files, including the revision history.</div>
+          <label class="gh-label">Repository name</label>
+          <div class="gh-input-row">
+            <div class="gh-select">ducdeven ▾</div>
+            <span class="gh-slash">/</span>
+            <div class="gh-input">vercel-deploy-slides</div>
+          </div>
+          <div class="gh-radio-row">
+            <div class="gh-radio checked"><span class="dot-outer"></span>Public</div>
+            <div class="gh-radio"><span class="dot-outer"></span>Private</div>
+          </div>
+          <div class="gh-foot"><div class="gh-btn">Create repository</div></div>
+        </div>
+      </div>
+
+      <div class="chrome-baseline">
+        <span>Frontend Team <span class="dash">—</span> 2026</span>
+        <span>04 / 10</span>
+      </div>
+    </section>
+
+    <!-- ============ SLIDE 5 — ĐẨY CODE LÊN GITHUB ============ -->
+    <section class="slide">
+      <div class="grid-overlay"></div>
+      <div class="chrome-num reveal d1">05 <span>/</span> 10</div>
+      <div class="chrome-tag reveal d1">Bước 2 · GitHub</div>
+
+      <div style="position:absolute; left:72px; top:260px; width:740px; z-index:2;">
+        <div class="eyebrow reveal d2">Không cần dùng dòng lệnh</div>
+        <h2 class="heading small reveal d3" contenteditable="false">Đẩy code lên GitHub</h2>
+        <ul class="bullet-list compact">
+          <li class="reveal d4"><span class="mark"></span><span class="txt" contenteditable="false">Trong repo trống vừa tạo, chọn liên kết <b>"uploading an existing file"</b></span></li>
+          <li class="reveal d5"><span class="mark"></span><span class="txt" contenteditable="false">Kéo thả cả <b>folder/file project</b> vào khung tải lên</span></li>
+          <li class="reveal d6"><span class="mark"></span><span class="txt" contenteditable="false">Viết mô tả ngắn rồi bấm <b>"Commit changes"</b> — code đã có trên GitHub</span></li>
+        </ul>
+      </div>
+
+      <div class="app-mock reveal d4" style="top:218px;">
+        <div class="mock-bar">
+          <span class="mock-dot"></span><span class="mock-dot"></span><span class="mock-dot"></span>
+          <div class="mock-url"><span class="lock">🔒</span>github.com/ducdeven/vercel-deploy-slides/upload</div>
+        </div>
+        <div class="mock-body">
+          <div class="gh-crumb"><span class="gh-logo">GH</span>ducdeven / vercel-deploy-slides</div>
+          <div class="gh-dropzone">
+            <span class="up-icon">⬆</span>
+            Drag files here to add them to your repository<br>— or — <b>choose your files</b>
+          </div>
+          <div class="gh-commit-box"><span class="ph">Add files via upload</span></div>
+          <div class="gh-foot"><div class="gh-btn">Commit changes</div></div>
+        </div>
+      </div>
+
+      <div class="chrome-baseline">
+        <span>Frontend Team <span class="dash">—</span> 2026</span>
+        <span>05 / 10</span>
+      </div>
+    </section>
+
+    <!-- ============ SLIDE 6 — IMPORT VÀO VERCEL ============ -->
+    <section class="slide">
+      <div class="grid-overlay"></div>
+      <div class="chrome-num reveal d1">06 <span>/</span> 10</div>
+      <div class="chrome-tag reveal d1">Bước 3 · Vercel</div>
+
+      <div style="position:absolute; left:72px; top:260px; width:740px; z-index:2;">
+        <div class="eyebrow reveal d2">Kết nối Vercel với GitHub</div>
+        <h2 class="heading small reveal d3" contenteditable="false">Import project vào Vercel</h2>
+        <ul class="bullet-list compact">
+          <li class="reveal d4"><span class="mark"></span><span class="txt" contenteditable="false">Đăng nhập <b>vercel.com</b> bằng chính tài khoản GitHub của bạn</span></li>
+          <li class="reveal d5"><span class="mark"></span><span class="txt" contenteditable="false">Trên dashboard, chọn <b>"Add New..." → "Project"</b></span></li>
+          <li class="reveal d6"><span class="mark"></span><span class="txt" contenteditable="false">Tìm đúng repo vừa tạo trong danh sách → bấm <b>"Import"</b></span></li>
+        </ul>
+      </div>
+
+      <div class="app-mock reveal d4" style="top:218px;">
+        <div class="mock-bar">
+          <span class="mock-dot"></span><span class="mock-dot"></span><span class="mock-dot"></span>
+          <div class="mock-url"><span class="lock">🔒</span>vercel.com/drop</div>
+        </div>
+        <div class="mock-body">
+          <div class="vc-h1">Import Git Repository</div>
+          <div class="vc-search">🔍 Search repositories and teams...</div>
+          <div class="vc-repo-row">
+            <div class="vc-repo-name"><span class="vc-repo-icon"></span>ducdeven / vercel-deploy-slides</div>
+            <div class="vc-btn">Import</div>
+          </div>
+          <div class="vc-repo-row dim">
+            <div class="vc-repo-name"><span class="vc-repo-icon"></span>ducdeven / fintech-stock</div>
+            <div class="vc-btn outline">Import</div>
+          </div>
+          <div class="vc-repo-row dim">
+            <div class="vc-repo-name"><span class="vc-repo-icon"></span>ducdeven / chat-app</div>
+            <div class="vc-btn outline">Import</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="chrome-baseline">
+        <span>Frontend Team <span class="dash">—</span> 2026</span>
+        <span>06 / 10</span>
+      </div>
+    </section>
+
+    <!-- ============ SLIDE 7 — CẤU HÌNH BUILD & ENV ============ -->
+    <section class="slide">
+      <div class="grid-overlay"></div>
+      <div class="chrome-num reveal d1">07 <span>/</span> 10</div>
+      <div class="chrome-tag reveal d1">Bước 4 · Vercel</div>
+
+      <div style="position:absolute; left:72px; top:260px; width:740px; z-index:2;">
+        <div class="eyebrow reveal d2">Trước khi bấm Deploy</div>
+        <h2 class="heading small reveal d3" contenteditable="false">Cấu hình &amp; Environment Variables</h2>
+        <ul class="bullet-list compact">
+          <li class="reveal d4"><span class="mark"></span><span class="txt" contenteditable="false"><b>Framework Preset</b>: Vercel tự nhận diện Next.js, Vite... hoặc chọn "Other" cho site tĩnh</span></li>
+          <li class="reveal d5"><span class="mark"></span><span class="txt" contenteditable="false"><b>Build &amp; Output Settings</b>: thường để mặc định, không cần sửa</span></li>
+          <li class="reveal d6"><span class="mark"></span><span class="txt" contenteditable="false"><b>Environment Variables</b>: thêm nếu project cần API key / secret riêng</span></li>
+        </ul>
+      </div>
+
+      <div class="app-mock reveal d4" style="top:150px; width:900px; left:948px;">
+        <div class="mock-bar">
+          <span class="mock-dot"></span><span class="mock-dot"></span><span class="mock-dot"></span>
+          <div class="mock-url"><span class="lock">🔒</span>vercel.com/new/configure</div>
+        </div>
+        <div class="mock-body">
+          <div class="vc-h1">Configure Project</div>
+          <div class="vc-field"><label>Framework Preset</label><div class="vc-select">▣ Other ▾</div></div>
+          <div class="vc-field"><label>Root Directory</label><div class="vc-input">./</div></div>
+          <div class="vc-accordion">Build and Output Settings <span class="chev">⌄</span></div>
+          <div class="vc-accordion">Environment Variables <span class="chev">⌃</span></div>
+          <div class="vc-env-row">
+            <div class="vc-input">NAME</div>
+            <div class="vc-input">VALUE</div>
+            <div class="vc-btn outline">Add</div>
+          </div>
+          <div class="vc-btn wide">Deploy</div>
+        </div>
+      </div>
+
+      <div class="chrome-baseline">
+        <span>Frontend Team <span class="dash">—</span> 2026</span>
+        <span>07 / 10</span>
+      </div>
+    </section>
+
+    <!-- ============ SLIDE 8 — DEPLOY & PREVIEW ============ -->
+    <section class="slide">
+      <div class="grid-overlay"></div>
+      <div class="chrome-num reveal d1">08 <span>/</span> 10</div>
+      <div class="chrome-tag reveal d1">Bước 5 · Vercel</div>
+
+      <div style="position:absolute; left:72px; top:260px; width:740px; z-index:2;">
+        <div class="eyebrow reveal d2">Từ commit đến production</div>
+        <h2 class="heading small reveal d3" contenteditable="false">Deploy &amp; Preview Deployments</h2>
+        <ul class="bullet-list compact">
+          <li class="reveal d4"><span class="mark"></span><span class="txt" contenteditable="false">Bấm <b>Deploy</b> — Vercel build và cấp ngay một URL để xem kết quả</span></li>
+          <li class="reveal d5"><span class="mark"></span><span class="txt" contenteditable="false">Mỗi <b>Pull Request</b> tự động tạo một <b>Preview Deployment</b> riêng để review</span></li>
+          <li class="reveal d6"><span class="mark"></span><span class="txt" contenteditable="false">Merge vào nhánh <b>main</b> → tự động deploy lên <b>Production</b></span></li>
+        </ul>
+      </div>
+
+      <div class="app-mock reveal d4" style="top:198px;">
+        <div class="mock-bar">
+          <span class="mock-dot"></span><span class="mock-dot"></span><span class="mock-dot"></span>
+          <div class="mock-url"><span class="lock">🔒</span>vercel.com/ducdeven/vercel-deploy-slides</div>
+        </div>
+        <div class="mock-body">
+          <div class="vc-success">
+            <div class="emoji">🎉</div>
+            <h2>Congratulations!</h2>
+            <p>vercel-deploy-slides đã được deploy lên production.</p>
+            <div class="vc-url-pill">🔗 vercel-deploy-slides.vercel.app</div>
+            <div class="vc-success-actions">
+              <div class="vc-btn">Visit</div>
+              <div class="vc-btn outline">Continue to Dashboard</div>
+            </div>
+            <div class="vc-deploy-table">
+              <div class="row"><span>● main — Production</span><span class="vc-pill"><span class="dot"></span>Ready</span></div>
+              <div class="row"><span>● feature/navbar — Preview</span><span class="vc-pill"><span class="dot"></span>Ready</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="chrome-baseline">
+        <span>Frontend Team <span class="dash">—</span> 2026</span>
+        <span>08 / 10</span>
+      </div>
+    </section>
+
+    <!-- ============ SLIDE 9 — DEPLOY TRỰC TIẾP KHÔNG CẦN GITHUB ============ -->
+    <section class="slide">
+      <div class="grid-overlay"></div>
+      <div class="chrome-num reveal d1">09 <span>/</span> 10</div>
+      <div class="chrome-tag reveal d1">Mẹo nhanh</div>
+
+      <div style="position:absolute; left:72px; top:260px; width:740px; z-index:2;">
+        <div class="eyebrow reveal d2">Cách nhanh nhất cho site tĩnh</div>
+        <h2 class="heading small reveal d3" contenteditable="false">Deploy trực tiếp — không cần GitHub</h2>
+        <ul class="bullet-list compact">
+          <li class="reveal d4"><span class="mark"></span><span class="txt" contenteditable="false">Chỉ có 1 file <b>index.html</b> như bộ slide này? Không cần tạo repo, không cần Git</span></li>
+          <li class="reveal d5"><span class="mark"></span><span class="txt" contenteditable="false">Vào <b>vercel.com/drop</b>, kéo thả cả folder vào khung "Deploy"</span></li>
+          <li class="reveal d6"><span class="mark"></span><span class="txt" contenteditable="false">Vercel build &amp; cấp URL ngay — nhanh nhất cho demo, prototype</span></li>
+        </ul>
+      </div>
+
+      <div class="app-mock reveal d4" style="top:218px;">
+        <div class="mock-bar">
+          <span class="mock-dot"></span><span class="mock-dot"></span><span class="mock-dot"></span>
+          <div class="mock-url"><span class="lock">🔒</span>vercel.com/drop</div>
+        </div>
+        <div class="mock-body">
+          <div class="vc-deploy-drop">
+            <span class="up-icon">⬆</span>
+            <b>Drag and drop your project folder here</b>
+            <div class="or">or</div>
+            <div class="vc-btn outline" style="display:inline-block;">Browse files</div>
+          </div>
+          <div class="vc-note">No Git repository required</div>
+        </div>
+      </div>
+
+      <div class="chrome-baseline">
+        <span>Frontend Team <span class="dash">—</span> 2026</span>
+        <span>09 / 10</span>
+      </div>
+    </section>
+
+    <!-- ============ SLIDE 10 — TIPS & Q&A ============ -->
+    <section class="slide">
+      <div class="grid-overlay"></div>
+      <div class="chrome-num reveal d1">10 <span>/</span> 10</div>
+      <div class="chrome-tag reveal d1">Lưu ý · Q&amp;A</div>
+      <div class="geo-circle reveal d2" style="right:140px; top:260px;"></div>
+
+      <div style="position:absolute; left:72px; top:230px; width:1300px; z-index:2;">
+        <div class="eyebrow reveal d2">Trước khi kết thúc</div>
+        <h2 class="heading reveal d3" contenteditable="false">Một vài lưu ý</h2>
+        <ul class="bullet-list">
+          <li class="reveal d4"><span class="mark"></span><span class="txt" contenteditable="false">Mỗi lần push code mới lên GitHub, Vercel <b>tự động build &amp; deploy lại</b> — không cần làm gì thêm</span></li>
+          <li class="reveal d4"><span class="mark"></span><span class="txt" contenteditable="false">Gói Free (Hobby): các bản deploy <b>không gắn alias</b> (preview cũ, bản production cũ) tự xoá sau <b>30 ngày</b><span class="note">Domain chính (*.vercel.app / domain riêng) không bị ảnh hưởng — vẫn sống bình thường</span></span></li>
+          <li class="reveal d5"><span class="mark"></span><span class="txt" contenteditable="false">Muốn quay lại bản cũ? Vào tab <b>"Deployments"</b> → chọn bản cũ → <b>"Promote to Production"</b></span></li>
+        </ul>
+      </div>
+      <div class="chrome-baseline">
+        <span>Frontend Team <span class="dash">—</span> 2026</span>
+        <span>10 / 10</span>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- Deck navigation controls — outside the fixed slide stage -->
+<div class="deck-controls">
+  <button id="prevBtn" title="Previous (←)">‹</button>
+  <div class="deck-dots" id="deckDots"></div>
+  <span class="deck-progress-label" id="progressLabel">01 / 10</span>
+  <button id="nextBtn" title="Next (→)">›</button>
+</div>
+
+<!-- Inline edit affordance -->
+<div class="edit-hotzone" id="editHotzone"></div>
+<button class="edit-toggle" id="editToggle" title="Edit mode (E)">✏️</button>
+
+<script>
+/* ===========================================
+   SLIDE PRESENTATION CONTROLLER
+   Handles stage scaling, navigation, dots
+   =========================================== */
+class SlidePresentation {
+    constructor() {
+        this.slides = Array.from(document.querySelectorAll('.slide'));
+        this.currentSlide = 0;
+        this.stage = document.getElementById('deckStage');
+        this.dotsWrap = document.getElementById('deckDots');
+        this.progressLabel = document.getElementById('progressLabel');
+        this.buildDots();
+        this.setupStageScale();
+        this.setupKeyboardNav();
+        this.setupTouchNav();
+        this.setupWheelNav();
+        document.getElementById('prevBtn').addEventListener('click', () => this.showSlide(this.currentSlide - 1));
+        document.getElementById('nextBtn').addEventListener('click', () => this.showSlide(this.currentSlide + 1));
+        this.showSlide(0);
+    }
+
+    buildDots() {
+        this.slides.forEach((_, i) => {
+            const dot = document.createElement('div');
+            dot.className = 'dot';
+            dot.addEventListener('click', () => this.showSlide(i));
+            this.dotsWrap.appendChild(dot);
+        });
+        this.dots = Array.from(this.dotsWrap.children);
+    }
+
+    setupStageScale() {
+        const scale = () => {
+            const factor = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+            const x = (window.innerWidth - 1920 * factor) / 2;
+            const y = (window.innerHeight - 1080 * factor) / 2;
+            this.stage.style.transform = `translate(${x}px, ${y}px) scale(${factor})`;
+        };
+        scale();
+        window.addEventListener('resize', scale);
+    }
+
+    setupKeyboardNav() {
+        document.addEventListener('keydown', (e) => {
+            if (document.activeElement && document.activeElement.getAttribute('contenteditable') === 'true') return;
+            if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); this.showSlide(this.currentSlide + 1); }
+            if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); this.showSlide(this.currentSlide - 1); }
+        });
+    }
+
+    setupTouchNav() {
+        let startX = 0;
+        this.stage.addEventListener('touchstart', (e) => { startX = e.touches[0].clientX; }, { passive: true });
+        this.stage.addEventListener('touchend', (e) => {
+            const diff = e.changedTouches[0].clientX - startX;
+            if (Math.abs(diff) > 50) { diff < 0 ? this.showSlide(this.currentSlide + 1) : this.showSlide(this.currentSlide - 1); }
+        }, { passive: true });
+    }
+
+    setupWheelNav() {
+        let locked = false;
+        window.addEventListener('wheel', (e) => {
+            if (locked) return;
+            locked = true;
+            setTimeout(() => { locked = false; }, 500);
+            if (e.deltaY > 20) this.showSlide(this.currentSlide + 1);
+            else if (e.deltaY < -20) this.showSlide(this.currentSlide - 1);
+        }, { passive: true });
+    }
+
+    showSlide(index) {
+        this.currentSlide = Math.max(0, Math.min(index, this.slides.length - 1));
+        this.slides.forEach((slide, i) => {
+            slide.classList.toggle('active', i === this.currentSlide);
+            slide.classList.toggle('visible', i === this.currentSlide);
+        });
+        this.dots.forEach((dot, i) => dot.classList.toggle('active', i === this.currentSlide));
+        const n = this.currentSlide + 1;
+        this.progressLabel.textContent = (n < 10 ? '0' + n : n) + ' / ' + this.slides.length;
+    }
+}
+
+/* ===========================================
+   INLINE EDIT MODE
+   JS-based hover with delay (not CSS ~ sibling)
+   =========================================== */
+class InlineEditor {
+    constructor() {
+        this.isActive = false;
+        this.storageKey = 'vercel-deploy-guide-edits';
+        this.toggle = document.getElementById('editToggle');
+        this.hotzone = document.getElementById('editHotzone');
+        this.hideTimeout = null;
+        this.bindHover();
+        this.bindToggle();
+        this.bindKeyboard();
+        this.restore();
+    }
+    bindHover() {
+        this.hotzone.addEventListener('mouseenter', () => { clearTimeout(this.hideTimeout); this.toggle.classList.add('show'); });
+        this.hotzone.addEventListener('mouseleave', () => { this.hideTimeout = setTimeout(() => { if (!this.isActive) this.toggle.classList.remove('show'); }, 400); });
+        this.toggle.addEventListener('mouseenter', () => clearTimeout(this.hideTimeout));
+        this.toggle.addEventListener('mouseleave', () => { this.hideTimeout = setTimeout(() => { if (!this.isActive) this.toggle.classList.remove('show'); }, 400); });
+        this.hotzone.addEventListener('click', () => this.toggleEditMode());
+    }
+    bindToggle() { this.toggle.addEventListener('click', () => this.toggleEditMode()); }
+    bindKeyboard() {
+        document.addEventListener('keydown', (e) => {
+            if ((e.key === 'e' || e.key === 'E') && !(document.activeElement && document.activeElement.getAttribute('contenteditable'))) {
+                this.toggleEditMode();
+            }
+            if (e.key === 's' && (e.metaKey || e.ctrlKey) && this.isActive) { e.preventDefault(); this.save(); }
+        });
+    }
+    toggleEditMode() {
+        this.isActive = !this.isActive;
+        this.toggle.classList.toggle('active', this.isActive);
+        document.querySelectorAll('[contenteditable]').forEach(el => el.setAttribute('contenteditable', this.isActive ? 'true' : 'false'));
+        if (!this.isActive) this.save();
+    }
+    save() {
+        const data = {};
+        document.querySelectorAll('[contenteditable]').forEach((el, i) => { el.dataset.editId = el.dataset.editId || ('e' + i); data[el.dataset.editId] = el.innerHTML; });
+        try { localStorage.setItem(this.storageKey, JSON.stringify(data)); } catch (e) {}
+    }
+    restore() {
+        try {
+            const raw = localStorage.getItem(this.storageKey);
+            if (!raw) return;
+            const data = JSON.parse(raw);
+            document.querySelectorAll('[contenteditable]').forEach((el, i) => {
+                const id = 'e' + i;
+                el.dataset.editId = id;
+                if (data[id] !== undefined) el.innerHTML = data[id];
+            });
+        } catch (e) {}
+    }
+}
+
+new SlidePresentation();
+new InlineEditor();
+</script>
+</body>
+</html>
